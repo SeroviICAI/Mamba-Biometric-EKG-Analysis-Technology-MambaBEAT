@@ -4,6 +4,7 @@ import torch
 # own modules
 from src.utils import (
     load_ekg_data,
+    plot_ekg,
     set_seed,
 )
 
@@ -17,7 +18,7 @@ set_seed(42)
 torch.set_num_threads(8)
 
 # static variables
-DATA_PATH: str = "data"
+DATA_PATH: str = "./data/"
 
 
 def main() -> None:
@@ -26,8 +27,8 @@ def main() -> None:
     """
     # hyperparameters
     batch_size: int = 64
-
     train_data, val_data, _ = load_ekg_data(DATA_PATH, batch_size=batch_size)
+    plot_ekg(train_data)
 
 
 if __name__ == "__main__":
