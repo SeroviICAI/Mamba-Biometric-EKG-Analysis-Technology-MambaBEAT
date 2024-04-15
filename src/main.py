@@ -11,9 +11,11 @@ from src.train_functions import (
     train_step,
     val_step,
 )
-from src.utils import (
+from src.utils.data import (
     load_ekg_data,
     plot_ekg,
+)
+from src.utils.torchutils import (
     set_seed,
 )
 
