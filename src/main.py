@@ -40,7 +40,7 @@ def main() -> None:
     # hyperparameters
     epochs: int = 50
     lr: float = 1e-3
-    batch_size: int = 64
+    batch_size: int = 128
     num_classes: int = 5  # replace with the actual number of classes
 
     # empty nohup file
