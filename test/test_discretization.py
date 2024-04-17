@@ -17,9 +17,9 @@ if __name__ == "__main__":
     module = TestModule()
 
     # Create some random input tensors
-    dt = torch.randn((), dtype=torch.float64, requires_grad=True)
+    dt = torch.randn((1, 1), dtype=torch.float64, requires_grad=True)
     A = torch.randn((3, 3), dtype=torch.float64, requires_grad=True)
     B = torch.randn((3, 1), dtype=torch.float64, requires_grad=True)
 
     # Check the gradients
-    gradcheck(module, (dt, A, B), eps=1e-6, atol=1e-4)
+    print(gradcheck(module, (dt, A, B), eps=1e-6, atol=1e-4))
