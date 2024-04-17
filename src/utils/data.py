@@ -3,7 +3,7 @@ import torch
 import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset, DataLoader, random_split
-from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.preprocessing import LabelEncoder
 
 # plotting libraries
 import matplotlib.pyplot as plt
@@ -25,16 +25,16 @@ class EKGDataset(Dataset):
     When using this dataset in your work, please cite the following:
 
     - The PTB-XL dataset itself:
-        Wagner, P., Strodthoff, N., Bousseljot, R., Samek, W., & Schaeffter, T. (2022). PTB-XL, a large publicly 
+        Wagner, P., Strodthoff, N., Bousseljot, R., Samek, W., & Schaeffter, T. (2022). PTB-XL, a large publicly
         available electrocardiography dataset (version 1.0.3). PhysioNet. https://doi.org/10.13026/kfzx-aw45.
 
     - The original publication of the dataset:
-        Wagner, P., Strodthoff, N., Bousseljot, R.-D., Kreiseler, D., Lunze, F.I., Samek, W., Schaeffter, T. (2020), 
+        Wagner, P., Strodthoff, N., Bousseljot, R.-D., Kreiseler, D., Lunze, F.I., Samek, W., Schaeffter, T. (2020),
         PTB-XL: A Large Publicly Available ECG Dataset. Scientific Data. https://doi.org/10.1038/s41597-020-0495-6
 
     - The PhysioNet resource:
-        Goldberger, A., Amaral, L., Glass, L., Hausdorff, J., Ivanov, P. C., Mark, R., ... & Stanley, H. E. (2000). 
-        PhysioBank, PhysioToolkit, and PhysioNet: Components of a new research resource for complex physiologic 
+        Goldberger, A., Amaral, L., Glass, L., Hausdorff, J., Ivanov, P. C., Mark, R., ... & Stanley, H. E. (2000).
+        PhysioBank, PhysioToolkit, and PhysioNet: Components of a new research resource for complex physiologic
         signals. Circulation [Online]. 101 (23), pp. e215–e220.
     """
 
@@ -43,27 +43,24 @@ class EKGDataset(Dataset):
         Constructor of EKGDataset.
 
         Args:
-            X (np.ndarray): The input data. Each row corresponds to an individual EKG recording, and each column 
-            corresponds to a specific lead of the EKG. The data should be a 2D numpy array where the number of rows 
+            X (np.ndarray): The input data. Each row corresponds to an individual EKG recording, and each column
+            corresponds to a specific lead of the EKG. The data should be a 2D numpy array where the number of rows
             is the number of EKG recordings and the number of columns is the number of leads in each recording.
 
-            y (List[List[str]]): The labels corresponding to the input data. Each element in the list is a list of 
-            strings, where each string is a diagnostic superclass for the corresponding EKG recording. The labels 
-            are binarized using a MultiLabelBinarizer to create a binary matrix indicating the presence of each 
+            y (List[List[str]]): The labels corresponding to the input data. Each element in the list is a list of
+            strings, where each string is a diagnostic superclass for the corresponding EKG recording. The labels
+            are binarized using a MultiLabelBinarizer to create a binary matrix indicating the presence of each
             diagnostic superclass for each EKG recording.
         """
 
         self.X = torch.from_numpy(X).float()
 
-        # Create a MultiLabelBinarizer object
-        mlb = MultiLabelBinarizer()
+        # Create a LabelEncoder object
+        self._le = LabelEncoder()
 
-        # Fit the MultiLabelBinarizer to the labels and transform the labels to binary vectors
-        self.y = torch.tensor(mlb.fit_transform(y), dtype=torch.float)
-
-        # Store the classes (unique labels)
-        self.classes_ = mlb.classes_
-
+        # Fit the LabelEncoder to the labels and transform the labels to integers
+        self.y = torch.tensor(self.le.fit_transform(y), dtype=torch.long)
+    
     def __len__(self) -> int:
         """
         This method returns the length of the dataset.
@@ -82,8 +79,8 @@ class EKGDataset(Dataset):
             index (int): The index of the element in the dataset.
 
         Returns:
-            tuple[torch.Tensor, torch.Tensor]: A tuple containing the EKG recording and its corresponding labels. 
-            The EKG recording is a 1D tensor where each element is a lead of the EKG, and the labels are a 1D 
+            tuple[torch.Tensor, torch.Tensor]: A tuple containing the EKG recording and its corresponding labels.
+            The EKG recording is a 1D tensor where each element is a lead of the EKG, and the labels are a 1D
             tensor of binary values indicating the presence of each diagnostic superclass for the EKG recording.
         """
 
@@ -168,12 +165,21 @@ def load_ekg_data(
         lambda x: aggregate_diagnostic(x, agg_df)
     )
 
-    # Split the data into train, validation, and test sets
+    # Repeat the EKG signals for each label
+    X_repeat = np.repeat(X, [len(labels) for labels in Y.diagnostic_superclass], axis=0)
+
+    # Flatten the list of labels
+    y_flatten = [label for sublist in Y.diagnostic_superclass for label in sublist]
+
+    # Define the test fold
     test_fold = 10
 
+    # Create a mask for the train + val set
+    train_val_mask = np.repeat((Y.strat_fold != test_fold).values, [len(labels) for labels in Y.diagnostic_superclass])
+
     # Train + Val
-    X_train_val = X[np.where(Y.strat_fold != test_fold)]
-    y_train_val = Y[(Y.strat_fold != test_fold)].diagnostic_superclass
+    X_train_val = X_repeat[train_val_mask]
+    y_train_val = [y_flatten[i] for i in np.where(train_val_mask)[0]]
     combined_dataset = EKGDataset(X_train_val, y_train_val)
 
     # Determine the lengths of the splits
@@ -184,10 +190,11 @@ def load_ekg_data(
     train_dataset, val_dataset = random_split(combined_dataset, [train_len, val_len])
 
     # Test
-    X_test = X[np.where(Y.strat_fold == test_fold)]
-    y_test = Y[Y.strat_fold == test_fold].diagnostic_superclass
+    test_mask = np.repeat((Y.strat_fold == test_fold).values, [len(labels) for labels in Y.diagnostic_superclass])
+    X_test = X_repeat[test_mask]
+    y_test = [y_flatten[i] for i in np.where(test_mask)[0]]
     test_dataset = EKGDataset(X_test, y_test)
-
+    
     # Create dataloaders
     train_dataloader: DataLoader = DataLoader(
         train_dataset,
@@ -214,7 +221,9 @@ def load_ekg_data(
     return train_dataloader, val_dataloader, test_dataloader
 
 
-def plot_ekg(dataloader: DataLoader, sampling_rate: int = 100, num_plots: int = 5) -> None:
+def plot_ekg(
+    dataloader: DataLoader, sampling_rate: int = 100, num_plots: int = 5
+) -> None:
     """
     Plot EKG signals from a dataloader.
 
@@ -267,7 +276,7 @@ def plot_ekg(dataloader: DataLoader, sampling_rate: int = 100, num_plots: int = 
         fig.text(0.04, 0.5, "Amplitude", va="center", rotation="vertical")
 
         # Set title for the entire figure
-        axes[0].set_title(f"EKG Signal {i+1}, Label: {labels[i]}")
+        axes[0].set_title(f"EKG Signal {i+1}, Label: {dataloader.dataset.le.inverse_transform(labels[i])}")
 
         # Set x label
         plt.xlabel("Time (seconds)")
@@ -307,3 +316,7 @@ def download_data(path: str) -> None:
     shutil.rmtree(unnecessary_folder_path)
 
     os.remove(target_path)
+
+
+# train_loader, val_loader, _ = load_ekg_data("./data/")
+# plot_ekg(train_loader)
