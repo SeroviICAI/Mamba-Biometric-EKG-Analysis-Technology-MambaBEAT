@@ -1,17 +1,18 @@
 import torch
 from einops import rearrange, repeat
-
+from ops.selective_scan import selective_scan
 import numpy as np
 
 
 class MambaBlock(torch.nn.Module):
-    def __init__(self, in_channels, latent_state_dim, expand, dt_rank, kernel_size, conv_bias, bias):
+    def __init__(self, in_channels, latent_state_dim, expand, dt_rank, kernel_size, conv_bias, bias, method):
         super(MambaBlock, self).__init__()
         self.in_channels = in_channels
         self.latent_state_dim = latent_state_dim
         self.expand = expand
         self.dt_rank = dt_rank
         self.kernel_size = kernel_size
+        self.method = method
 
         self.expanded_dim = int(self.expand * self.in_channels)
         self.in_proj = torch.nn.Linear(self.in_channels, self.expanded_dim * 2, bias=bias)
@@ -41,30 +42,17 @@ class MambaBlock(torch.nn.Module):
         self.out_proj = torch.nn.Linear(self.expanded_dim, self.in_channels, bias=bias)
 
     def forward(self, x):
-
-        # proyect input x an residual connection z
-        xz = self.in_proj(x)
+        # Project input x an residual connection z
+        x_z = self.in_proj(x)
 
         # Split expanded x and residual z
-        x, z = xz.chunk(2, dim=-1)
+        x, z = x_z.chunk(2, dim=-1)
 
         # pass input through the conv and the non_linearity
         x = self.activation(self.conv1d(x))
 
-        # Get B, C and delta from self.selection
-        B_C_delta = self.selection(x)
-
-        # Split the matrix.
-        B, C, delta = torch.split(B_C_delta, [self.expanded_dim, self.expanded_dim, self.dt_rank])
-
-        # Broadcast delta with self.dt_proj
-        delta = self.dt_proj(delta)
-        # ####MAYBE A NON LINEARITY IS NEEDED
-
-        # Ad, Bd = discretize(A, B, delta)
-
-        # Compute ssm -> ssm(Ad, Bd, C, D) or ssm(A, B, C, D, delta)
-        out = x
+        # Compute ssm -> ssm(Ad, Bd, C, D) or ssm(A, B, C, D, dt)
+        out = self.selective_ssm(x)
 
         # Activation of residual connection:
         z = self.activation(z)
@@ -76,3 +64,35 @@ class MambaBlock(torch.nn.Module):
         out = self.out_proj(out)
 
         return out
+
+    def selective_ssm(self, x):
+        # Get B, C and dt from self.selection
+        B_C_dt = self.selection(x)
+
+        # Split the matrix.
+        B, C, dt = torch.split(B_C_dt, [self.expanded_dim, self.expanded_dim, self.dt_rank])
+
+        # Broadcast dt with self.dt_proj
+        dt = torch.nn.functional.softplus(self.dt_proj(dt))
+        Ad, Bd = self.discretize(dt, self.A, B, self.method)
+
+        hidden = selective_scan(Ad, Bd * x.unsqueeze(-1))
+
+        out = hidden @ C.unsqueeze(-1)
+
+        return out.squeeze(3) + self.D * x
+
+    @staticmethod
+    def discretize(dt, A, B, method):
+        E = torch.eye(A.size(0), dtype=A.dtype, device=A.device)
+        if method == "zoh":
+            # Zero-Order Hold (ZOH) method
+            Ad = torch.matrix_exp(dt * A)
+            Bd = torch.inverse(dt * A) @ (Ad - E) @ (dt * B)
+        elif method == "bilinear":
+            # Bilinear Method (Tustin’s method)
+            ...
+        else:
+            raise ValueError("Invalid method. Choose either 'zoh' or 'bilinear'.")
+
+        return Ad, Bd
