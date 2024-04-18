@@ -13,7 +13,7 @@ class MambaBlock(torch.nn.Module):
         self.dt_rank = dt_rank
         self.kernel_size = kernel_size
 
-        self.expanded_dim = int(self.expand * self.d_model)
+        self.expanded_dim = int(self.expand * self.in_channels)
         self.in_proj = torch.nn.Linear(self.in_channels, self.expanded_dim * 2, bias=bias)
 
         self.conv1d = torch.nn.Conv1d(
@@ -26,8 +26,8 @@ class MambaBlock(torch.nn.Module):
         )
 
         self.activation = torch.nn.SiLU()
-        
-        self.selection = torch.nn.Linear(self.expanded_dim, self.dt_rank + self.latent_state_dim * 2, bias=False)
+
+        self.selection = torch.nn.Linear(self.expanded_dim, self.latent_state_dim * 2 + self.dt_rank, bias=False)
         self.dt_proj = torch.nn.Linear(self.dt_rank, self.expanded_dim, bias=True)  # Broadcast
 
         # HiPPO-LegS initialization
@@ -38,7 +38,41 @@ class MambaBlock(torch.nn.Module):
 
         self.D = torch.nn.Parameter(torch.ones(self.expanded_dim))
 
-        self.out_proj = torch.nn.Linear(self.d_inner, self.d_model, bias=self.bias)
+        self.out_proj = torch.nn.Linear(self.expanded_dim, self.in_channels, bias=bias)
 
     def forward(self, x):
-        pass
+
+        # proyect input x an residual connection z
+        xz = self.in_proj(x)
+
+        # Split expanded x and residual z
+        x, z = xz.chunk(2, dim=-1)
+
+        # pass input through the conv and the non_linearity
+        x = self.activation(self.conv1d(x))
+
+        # Get B, C and delta from self.selection
+        B_C_delta = self.selection(x)
+
+        # Split the matrix.
+        B, C, delta = torch.split(B_C_delta, [self.expanded_dim, self.expanded_dim, self.dt_rank])
+
+        # Broadcast delta with self.dt_proj
+        delta = self.dt_proj(delta)
+        # ####MAYBE A NON LINEARITY IS NEEDED
+
+        # Ad, Bd = discretize(A, B, delta)
+
+        # Compute ssm -> ssm(Ad, Bd, C, D) or ssm(A, B, C, D, delta)
+        out = x
+
+        # Activation of residual connection:
+        z = self.activation(z)
+
+        # multiply outputs and residual connection
+        out *= z
+
+        # and calculate output
+        out = self.out_proj(out)
+
+        return out
