@@ -35,7 +35,7 @@ class EKGDataset(Dataset):
     - The PhysioNet resource:
         Goldberger, A., Amaral, L., Glass, L., Hausdorff, J., Ivanov, P. C., Mark, R., ... & Stanley, H. E. (2000).
         PhysioBank, PhysioToolkit, and PhysioNet: Components of a new research resource for complex physiologic
-        signals. Circulation [Online]. 101 (23), pp. e215–e220.
+        signals. Circulation [Online]. 101 (23), pp. e215-e220.
     """
 
     def __init__(self, X: np.ndarray, y: List[List[str]]) -> None:
@@ -59,8 +59,8 @@ class EKGDataset(Dataset):
         self._le = LabelEncoder()
 
         # Fit the LabelEncoder to the labels and transform the labels to integers
-        self.y = torch.tensor(self.le.fit_transform(y), dtype=torch.long)
-    
+        self.y = torch.tensor(self._le.fit_transform(y), dtype=torch.long)
+
     def __len__(self) -> int:
         """
         This method returns the length of the dataset.
@@ -194,7 +194,6 @@ def load_ekg_data(
     X_test = X_repeat[test_mask]
     y_test = [y_flatten[i] for i in np.where(test_mask)[0]]
     test_dataset = EKGDataset(X_test, y_test)
-    
     # Create dataloaders
     train_dataloader: DataLoader = DataLoader(
         train_dataset,
