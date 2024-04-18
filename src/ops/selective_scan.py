@@ -18,7 +18,7 @@ class SelectiveScan(torch.autograd.Function):
         A = F.pad(A_in, (0, 0, 0, 0, 0, next_power_of_2 - original_L), "constant", 0)
         X = F.pad(X_in, (0, 0, 0, 0, 0, next_power_of_2 - original_L), "constant", 0)
         L = A.size(1)
-        
+
         A = A.transpose(2, 1)
         X = X.transpose(2, 1)
 
@@ -42,16 +42,20 @@ class SelectiveScan(torch.autograd.Function):
             X[:, :, indices + 2 ** (d + 1) - 1] = (
                 A[:, :, indices + 2**d - 1] * X[:, :, indices + 2 ** (d + 1) - 1] + t
             )
-        
+
         # Remove the first zero elements and add the last elements
         X = torch.cat(
             (X[:, :, 1:original_L], last_elementA * X[:, :, original_L - 1:original_L] + last_elementX), dim=2
         )
-        
+
         # Save tensors for backward pass
         ctx.save_for_backward(A_in, X)
         return X.transpose(2, 1)[:, :original_L]
-    
+
     @staticmethod
-    def backward(ctx, grad_output_in):  
+    def backward(ctx, grad_output_in):
         return
+
+
+def selective_scan(A_in, X_in):
+    return SelectiveScan.apply(A_in, X_in)
