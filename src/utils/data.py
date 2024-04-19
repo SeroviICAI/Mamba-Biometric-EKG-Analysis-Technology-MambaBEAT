@@ -275,7 +275,7 @@ def plot_ekg(
         fig.text(0.04, 0.5, "Amplitude", va="center", rotation="vertical")
 
         # Set title for the entire figure
-        axes[0].set_title(f"EKG Signal {i+1}, Label: {dataloader.dataset.le.inverse_transform(labels[i])}")
+        axes[0].set_title(f"EKG Signal {i+1}, Label: {labels[i]}")
 
         # Set x label
         plt.xlabel("Time (seconds)")
@@ -317,5 +317,5 @@ def download_data(path: str) -> None:
     os.remove(target_path)
 
 
-# train_loader, val_loader, _ = load_ekg_data("./data/")
-# plot_ekg(train_loader)
+train_loader, val_loader, _ = load_ekg_data("./data/")
+plot_ekg(train_loader)
