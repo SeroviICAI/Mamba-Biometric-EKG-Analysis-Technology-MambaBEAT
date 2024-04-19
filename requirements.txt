@@ -6,5 +6,5 @@ Requests==2.31.0
 scikit_learn==1.4.0
 tqdm==4.66.1
 wfdb==4.1.2
---find-links https://download.pytorch.org/whl/torch_stable.html
-torch==2.1.2+cu121
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch==2.1.2
