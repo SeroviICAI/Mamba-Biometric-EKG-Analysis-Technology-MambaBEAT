@@ -20,40 +20,47 @@ from typing import List, Dict
 
 class EKGDataset(Dataset):
     """
-    This class represents the PTB-XL dataset, a large publicly available electrocardiography dataset.
+    This class represents the PTB-XL dataset, a large publicly available
+    electrocardiography dataset.
 
     When using this dataset in your work, please cite the following:
 
     - The PTB-XL dataset itself:
-        Wagner, P., Strodthoff, N., Bousseljot, R., Samek, W., & Schaeffter, T. (2022). PTB-XL, a large publicly
-        available electrocardiography dataset (version 1.0.3). PhysioNet. https://doi.org/10.13026/kfzx-aw45.
+        Wagner, P., Strodthoff, N., Bousseljot, R., Samek, W., & Schaeffter, T. (2022). PTB-XL,
+        a large publicly available electrocardiography dataset (version 1.0.3).
+        PhysioNet. https://doi.org/10.13026/kfzx-aw45.
 
     - The original publication of the dataset:
-        Wagner, P., Strodthoff, N., Bousseljot, R.-D., Kreiseler, D., Lunze, F.I., Samek, W., Schaeffter, T. (2020),
-        PTB-XL: A Large Publicly Available ECG Dataset. Scientific Data. https://doi.org/10.1038/s41597-020-0495-6
+        Wagner, P., Strodthoff, N., Bousseljot, R.-D., Kreiseler, D., Lunze, F.I., Samek, W.,
+        Schaeffter, T. (2020), PTB-XL: A Large Publicly Available ECG Dataset.
+        Scientific Data. https://doi.org/10.1038/s41597-020-0495-6
 
     - The PhysioNet resource:
-        Goldberger, A., Amaral, L., Glass, L., Hausdorff, J., Ivanov, P. C., Mark, R., ... & Stanley, H. E. (2000).
-        PhysioBank, PhysioToolkit, and PhysioNet: Components of a new research resource for complex physiologic
-        signals. Circulation [Online]. 101 (23), pp. e215-e220.
+        Goldberger, A., Amaral, L., Glass, L., Hausdorff, J., Ivanov, P. C., Mark, R., ... &
+        Stanley, H. E. (2000). PhysioBank, PhysioToolkit, and PhysioNet: Components of a new
+        research resource for complex physiologic signals. Circulation [Online].
+        101 (23), pp. e215-e220.
     """
 
-    def __init__(self, X: np.ndarray, y: List[List[str]]) -> None:
+    def __init__(self, X: List[str], y: List[List[str]], path: str) -> None:
         """
         Constructor of EKGDataset.
 
         Args:
-            X (np.ndarray): The input data. Each row corresponds to an individual EKG recording, and each column
-            corresponds to a specific lead of the EKG. The data should be a 2D numpy array where the number of rows
-            is the number of EKG recordings and the number of columns is the number of leads in each recording.
+            X (List[str]): The input data. Each row corresponds to the filename where the raw
+            data is stored.
 
-            y (List[List[str]]): The labels corresponding to the input data. Each element in the list is a list of
-            strings, where each string is a diagnostic superclass for the corresponding EKG recording. The labels
-            are binarized using a MultiLabelBinarizer to create a binary matrix indicating the presence of each
-            diagnostic superclass for each EKG recording.
+            y (List[List[str]]): The labels corresponding to the input data. Each element in the
+            list is a list of strings, where each string is a diagnostic superclass for the
+            corresponding EKG recording. The labels are binarized using a MultiLabelBinarizer to
+            create a binary matrix indicating the presence of each diagnostic superclass
+            for each EKG recording.
+
+            path (str): the path where the data is stored.
         """
 
-        self.X = torch.from_numpy(X).float()
+        self._path = path
+        self.X = X
 
         # Create a LabelEncoder object
         self._le = LabelEncoder()
@@ -84,25 +91,20 @@ class EKGDataset(Dataset):
             tensor of binary values indicating the presence of each diagnostic superclass for the EKG recording.
         """
 
-        return self.X[index], self.y[index]
+        return self.load_raw_data(index), self.y[index]
 
+    def load_raw_data(self, index: int):
+        """
+        Load raw data from a specified index.
 
-def load_raw_data(df: pd.DataFrame, sampling_rate: int, path: str) -> np.ndarray:
-    """
-    Load raw data from a specified path.
+        Args:
+            index (int): The index where the data is stored.
 
-    Args:
-        df (pd.DataFrame): DataFrame containing filenames.
-        sampling_rate (int): The sampling rate of the data.
-        path (str): The path where the data is stored.
-
-    Returns:
-        np.ndarray: The loaded raw data.
-    """
-
-    filenames = df.filename_lr if sampling_rate == 100 else df.filename_hr
-    data = [wfdb.rdsamp(path + f)[0] for f in filenames]
-    return np.array(data)
+        Returns:
+            np.ndarray: The loaded raw data.
+        """
+        ekg_data = wfdb.rdsamp(self._path + self.X[index])[0]
+        return np.array(ekg_data)
 
 
 def aggregate_diagnostic(y_dic: Dict, agg_df: pd.DataFrame) -> List[str]:
@@ -155,7 +157,8 @@ def load_ekg_data(
 
     Y = pd.read_csv(path + "ptbxl_database.csv", index_col="ecg_id")
     Y.scp_codes = Y.scp_codes.apply(ast.literal_eval)
-    X = load_raw_data(Y, sampling_rate, path)
+    X = Y.filename_lr if sampling_rate == 100 else Y.filename_hr
+    X = X.to_numpy()
 
     # Load scp_statements.csv for diagnostic aggregation
     agg_df = pd.read_csv(path + "scp_statements.csv", index_col=0)
@@ -175,25 +178,27 @@ def load_ekg_data(
     test_fold = 10
 
     # Create a mask for the train + val set
-    train_val_mask = np.repeat((Y.strat_fold != test_fold).values, [len(labels) for labels in Y.diagnostic_superclass])
+    train_val_mask = np.repeat(
+        (Y.strat_fold != test_fold).values,
+        [len(labels) for labels in Y.diagnostic_superclass],
+    )
 
     # Train + Val
     X_train_val = X_repeat[train_val_mask]
     y_train_val = [y_flatten[i] for i in np.where(train_val_mask)[0]]
-    combined_dataset = EKGDataset(X_train_val, y_train_val)
-
-    # Determine the lengths of the splits
-    train_len = int(len(combined_dataset) * 0.8)  # 80% for training
-    val_len = len(combined_dataset) - train_len  # remaining for validation
+    combined_dataset = EKGDataset(X_train_val, y_train_val, path)
 
     # Use random_split to split the data
-    train_dataset, val_dataset = random_split(combined_dataset, [train_len, val_len])
+    train_dataset, val_dataset = random_split(combined_dataset, [0.8, 0.2])
 
     # Test
-    test_mask = np.repeat((Y.strat_fold == test_fold).values, [len(labels) for labels in Y.diagnostic_superclass])
+    test_mask = np.repeat(
+        (Y.strat_fold == test_fold).values,
+        [len(labels) for labels in Y.diagnostic_superclass],
+    )
     X_test = X_repeat[test_mask]
     y_test = [y_flatten[i] for i in np.where(test_mask)[0]]
-    test_dataset = EKGDataset(X_test, y_test)
+    test_dataset = EKGDataset(X_test, y_test, path)
     # Create dataloaders
     train_dataloader: DataLoader = DataLoader(
         train_dataset,
@@ -275,7 +280,7 @@ def plot_ekg(
         fig.text(0.04, 0.5, "Amplitude", va="center", rotation="vertical")
 
         # Set title for the entire figure
-        axes[0].set_title(f"EKG Signal {i+1}, Label: {dataloader.dataset.le.inverse_transform(labels[i])}")
+        axes[0].set_title(f"EKG Signal {i+1}, Label: {labels[i]}")
 
         # Set x label
         plt.xlabel("Time (seconds)")
@@ -291,9 +296,7 @@ def download_data(path: str) -> None:
         path (str): The path where the data will be downloaded and extracted.
     """
 
-    url: str = (
-        "https://physionet.org/static/published-projects/ptb-xl/ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.3.zip"
-    )
+    url: str = "https://physionet.org/static/published-projects/ptb-xl/ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.3.zip"
     target_path: str = path + "/ptb-xl.zip"
     unnecessary_folder_path: str = (
         path + "/ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.3"
