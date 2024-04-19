@@ -3,14 +3,17 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 
+
 # other libraries
 from tqdm.auto import tqdm
 
 # own modules
-from src.train_functions import (
+from src.utils.train_functions import (
     train_step,
     val_step,
+    Accuracy
 )
+
 from src.utils.data import (
     load_ekg_data,
     plot_ekg,
@@ -38,12 +41,13 @@ def main() -> None:
     """
     This function is the main program for the training.
     """
-
+    # 
     # hyperparameters
     epochs: int = 50
     lr: float = 1e-3
     batch_size: int = 128
     num_classes: int = 5  # replace with the actual number of classes
+    accuracy: Accuracy = Accuracy()
 
     # empty nohup file
     open("nohup.out", "w").close()
@@ -64,13 +68,17 @@ def main() -> None:
     loss: torch.nn.Module = torch.nn.CrossEntropyLoss()
     optimizer: torch.optim.Optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
+    # compute the accuracy 
+
+    accuracy: Accuracy = Accuracy()
+
+
     # define an empty scheduler
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=1)
-
     # Train the model
     for epoch in tqdm(range(epochs)):  # loop over the dataset multiple times
         # call train step
-        train_step(model, train_data, 0, 1, loss, optimizer, writer, epoch, device)
+        train_step(model, train_data, 0, 1, loss, optimizer, writer, epoch, device, accuracy)
 
         # call val step
         val_step(model, val_data, 0, 1, loss, scheduler, writer, epoch, device)
