@@ -1,11 +1,20 @@
 import torch
-from einops import rearrange, repeat
-from ops.selective_scan import selective_scan
-import numpy as np
+import math
+from src.ops.selective_scan import selective_scan
 
 
 class MambaBlock(torch.nn.Module):
-    def __init__(self, in_channels, latent_state_dim, expand, dt_rank, kernel_size, conv_bias, bias, method):
+    def __init__(
+        self,
+        in_channels: int,
+        latent_state_dim: int,
+        expand: int,
+        dt_rank: int,
+        kernel_size: int,
+        conv_bias: bool,
+        bias: bool,
+        method: str,
+    ):
         super(MambaBlock, self).__init__()
         self.in_channels = in_channels
         self.latent_state_dim = latent_state_dim
@@ -15,7 +24,10 @@ class MambaBlock(torch.nn.Module):
         self.method = method
 
         self.expanded_dim = int(self.expand * self.in_channels)
-        self.in_proj = torch.nn.Linear(self.in_channels, self.expanded_dim * 2, bias=bias)
+        self.in_proj = torch.nn.Linear(
+            self.in_channels, self.expanded_dim * 2, bias=bias
+        )
+        self.latent_state_dim = self.expanded_dim
 
         self.conv1d = torch.nn.Conv1d(
             in_channels=self.expanded_dim,
@@ -28,8 +40,13 @@ class MambaBlock(torch.nn.Module):
 
         self.activation = torch.nn.SiLU()
 
-        self.selection = torch.nn.Linear(self.expanded_dim, self.latent_state_dim * 2 + self.dt_rank, bias=False)
-        self.dt_proj = torch.nn.Linear(self.dt_rank, self.expanded_dim, bias=True)  # Broadcast
+        self.selection = torch.nn.Linear(
+            self.expanded_dim, self.latent_state_dim * 2 + self.dt_rank, bias=False
+        )
+        self.dt_proj = torch.nn.Linear(
+            self.dt_rank, self.expanded_dim, bias=True
+        )  # Broadcast
+
 
         # HiPPO-LegS initialization
         P = torch.sqrt(1 + 2 * torch.arange(self.expanded_dim))
@@ -42,6 +59,7 @@ class MambaBlock(torch.nn.Module):
         self.out_proj = torch.nn.Linear(self.expanded_dim, self.in_channels, bias=bias)
 
     def forward(self, x):
+        L = x.size(1)
         # Project input x an residual connection z
         x_z = self.in_proj(x)
 
@@ -49,7 +67,11 @@ class MambaBlock(torch.nn.Module):
         x, z = x_z.chunk(2, dim=-1)
 
         # pass input through the conv and the non_linearity
-        x = self.activation(self.conv1d(x))
+        x = x.transpose(1, 2)
+        x = self.conv1d(x)[:, :, :L]
+        x = x.transpose(1, 2)
+
+        x = self.activation(x)
 
         # Compute ssm -> ssm(Ad, Bd, C, D) or ssm(A, B, C, D, dt)
         out = self.selective_ssm(x)
@@ -57,7 +79,7 @@ class MambaBlock(torch.nn.Module):
         # Activation of residual connection:
         z = self.activation(z)
 
-        # multiply outputs and residual connection
+        # multiply outputs by residual connection
         out *= z
 
         # and calculate output
@@ -70,12 +92,13 @@ class MambaBlock(torch.nn.Module):
         B_C_dt = self.selection(x)
 
         # Split the matrix.
-        B, C, dt = torch.split(B_C_dt, [self.expanded_dim, self.expanded_dim, self.dt_rank])
+        B, C, dt = torch.split(
+            B_C_dt, [self.latent_state_dim, self.latent_state_dim, self.dt_rank], dim=-1
+        )
 
         # Broadcast dt with self.dt_proj
         dt = torch.nn.functional.softplus(self.dt_proj(dt))
         Ad, Bd = self.discretize(dt, self.A, B, self.method)
-
         hidden = selective_scan(Ad, Bd * x.unsqueeze(-1))
 
         out = hidden @ C.unsqueeze(-1)
@@ -87,12 +110,78 @@ class MambaBlock(torch.nn.Module):
         E = torch.eye(A.size(0), dtype=A.dtype, device=A.device)
         if method == "zoh":
             # Zero-Order Hold (ZOH) method
-            Ad = torch.matrix_exp(dt * A)
-            Bd = torch.inverse(dt * A) @ (Ad - E) @ (dt * B)
+            Ad = torch.matrix_exp(dt.unsqueeze(-1) * A)
+            Bd = torch.inverse(dt.unsqueeze(-1) * A) @ (Ad - E) @ (dt.unsqueeze(-1) * B.unsqueeze(2))
         elif method == "bilinear":
-            # Bilinear Method (Tustin’s method)
-            ...
+            half_dt_A = 0.5 * dt * A
+            Ad = torch.inverse(E - half_dt_A) @ (E + half_dt_A)
+            Bd = torch.inverse(E - half_dt_A) @ dt * B
         else:
             raise ValueError("Invalid method. Choose either 'zoh' or 'bilinear'.")
 
         return Ad, Bd
+
+
+class MambaBEAT(torch.nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        n_layers: int = 1,
+        latent_state_dim: int = 16,
+        expand: int = 2,
+        dt_rank: int = None,
+        kernel_size: int = 4,
+        conv_bias: bool = True,
+        bias: bool = True,
+        method: str = "zoh",
+    ):
+        super().__init__()
+
+        if dt_rank is None:
+            dt_rank = math.ceil(in_channels / latent_state_dim)
+
+        self.layers = torch.nn.Sequential(
+            *[
+                MambaBlock(
+                    in_channels,
+                    latent_state_dim,
+                    expand,
+                    dt_rank,
+                    kernel_size,
+                    conv_bias,
+                    bias,
+                    method,
+                )
+                for _ in range(n_layers)
+            ]
+        )
+
+        self.norm = RMSNorm(in_channels)
+
+        self.linear = torch.nn.Linear(in_channels, out_channels)
+        self.softmax = torch.nn.Softmax(dim=1)
+
+    def forward(self, x):
+        # Get last batch of labels
+        x = self.layers(x)[:, -1]
+        x = self.norm(x)
+        x = self.linear(x)
+        return self.softmax(x)
+
+
+class RMSNorm(torch.nn.Module):
+    def __init__(self, size: int, epsilon: float = 1e-5, bias: bool = False):
+        super().__init__()
+
+        self.epsilon = epsilon
+        self.weight = torch.nn.Parameter(torch.ones(size))
+        self.bias = torch.nn.Parameter(torch.zeros(size)) if bias else None
+
+    def forward(self, x):
+        normed_x = x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.epsilon) * self.weight
+
+        if self.bias is not None:
+            return normed_x + self.bias
+
+        return normed_x
