@@ -3,7 +3,7 @@ import torch
 import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset, DataLoader, random_split
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 
 # plotting libraries
 import matplotlib.pyplot as plt
@@ -16,6 +16,8 @@ import shutil
 import wfdb
 import zipfile
 from typing import List, Dict
+
+pd.set_option('future.no_silent_downcasting', True)
 
 
 class EKGDataset(Dataset):
@@ -42,13 +44,15 @@ class EKGDataset(Dataset):
         101 (23), pp. e215-e220.
     """
 
-    def __init__(self, X: List[str], y: List[List[str]], path: str) -> None:
+    def __init__(self, X: List[str], features: List[int], y: List[List[str]], path: str) -> None:
         """
         Constructor of EKGDataset.
 
         Args:
             X (List[str]): The input data. Each row corresponds to the filename where the raw
             data is stored.
+
+            deatures (List[int]): patient data.
 
             y (List[List[str]]): The labels corresponding to the input data. Each element in the
             list is a list of strings, where each string is a diagnostic superclass for the
@@ -61,6 +65,7 @@ class EKGDataset(Dataset):
 
         self._path = path
         self.X = X
+        self.features = torch.tensor(features)
 
         # Create a LabelEncoder object
         self._le = LabelEncoder()
@@ -91,7 +96,7 @@ class EKGDataset(Dataset):
             tensor of binary values indicating the presence of each diagnostic superclass for the EKG recording.
         """
 
-        return self.load_raw_data(index), self.y[index]
+        return self.load_raw_data(index), self.features[index], self.y[index]
 
     def load_raw_data(self, index: int):
         """
@@ -126,6 +131,43 @@ def aggregate_diagnostic(y_dic: Dict, agg_df: pd.DataFrame) -> List[str]:
             if key in agg_df.index
         )
     )
+
+
+def extract_features(df):
+    X = pd.DataFrame(index=df.index)
+
+    X['age'] = df.age
+    X['age'] = X.age.fillna(0)
+
+    X['sex'] = df.sex.astype(float)
+    X['sex'] = X.sex.fillna(0)
+
+    X['height'] = df.height
+    X.loc[X.height < 50, 'height'] = np.nan
+    X['height'] = X.height.fillna(0)
+
+    X['weight'] = df.weight
+    X['weight'] = X.weight.fillna(0)
+
+    X['infarction_stadium1'] = df.infarction_stadium1.replace({
+        'unknown': 0,
+        'Stadium I': 1,
+        'Stadium I-II': 2,
+        'Stadium II': 3,
+        'Stadium II-III': 4,
+        'Stadium III': 5
+    }).fillna(0)
+
+    X['infarction_stadium2'] = df.infarction_stadium2.replace({
+        'unknown': 0,
+        'Stadium I': 1,
+        'Stadium II': 2,
+        'Stadium III': 3
+    }).fillna(0)
+
+    X['pacemaker'] = (df.pacemaker == 'ja, pacemaker').astype(float)
+
+    return X
 
 
 def load_ekg_data(
@@ -167,38 +209,61 @@ def load_ekg_data(
     Y["diagnostic_superclass"] = Y.scp_codes.apply(
         lambda x: aggregate_diagnostic(x, agg_df)
     )
+    features = extract_features(Y)
 
     # Repeat the EKG signals for each label
     X_repeat = np.repeat(X, [len(labels) for labels in Y.diagnostic_superclass], axis=0)
-
+    features_repeat = np.repeat(features, [len(labels) for labels in Y.diagnostic_superclass], axis=0)
     # Flatten the list of labels
     y_flatten = [label for sublist in Y.diagnostic_superclass for label in sublist]
 
     # Define the test fold
     test_fold = 10
 
+    val_fold = 9
+
     # Create a mask for the train + val set
-    train_val_mask = np.repeat(
-        (Y.strat_fold != test_fold).values,
+    train_mask = np.repeat(
+        (~Y.strat_fold.isin([test_fold, val_fold])).values,
         [len(labels) for labels in Y.diagnostic_superclass],
     )
 
     # Train + Val
-    X_train_val = X_repeat[train_val_mask]
-    y_train_val = [y_flatten[i] for i in np.where(train_val_mask)[0]]
-    combined_dataset = EKGDataset(X_train_val, y_train_val, path)
+    X_train = X_repeat[train_mask]
+    features_train = features_repeat[train_mask]
+    y_train = [y_flatten[i] for i in np.where(train_mask)[0]]
+    # combined_dataset = EKGDataset(X_train_val, y_train_val, path)
 
     # Use random_split to split the data
-    train_dataset, val_dataset = random_split(combined_dataset, [0.8, 0.2])
+    # train_dataset, val_dataset = random_split(combined_dataset, [0.8, 0.2])
 
+    # Validation
+    val_mask = np.repeat(
+        (Y.strat_fold == val_fold).values,
+        [len(labels) for labels in Y.diagnostic_superclass],
+    )
+    X_val = X_repeat[val_mask]
+    features_val = features_repeat[val_mask]
+    y_val = [y_flatten[i] for i in np.where(val_mask)[0]]
     # Test
     test_mask = np.repeat(
         (Y.strat_fold == test_fold).values,
         [len(labels) for labels in Y.diagnostic_superclass],
     )
     X_test = X_repeat[test_mask]
+    features_test = features_repeat[test_mask]
     y_test = [y_flatten[i] for i in np.where(test_mask)[0]]
-    test_dataset = EKGDataset(X_test, y_test, path)
+
+    features_scaler = StandardScaler()
+    features_scaler.fit(features_train)
+
+    features_train = features_scaler.transform(features_train)
+    features_val = features_scaler.transform(features_val)
+    features_test = features_scaler.transform(features_test)
+
+    train_dataset = EKGDataset(X_train, features_train, y_train, path)
+    val_dataset = EKGDataset(X_val, features_val, y_val, path)
+    test_dataset = EKGDataset(X_test, features_test, y_test, path)
     # Create dataloaders
     train_dataloader: DataLoader = DataLoader(
         train_dataset,
@@ -238,7 +303,7 @@ def plot_ekg(
     """
 
     # Get a batch of data
-    ekg_signals, labels = next(iter(dataloader))
+    ekg_signals, _, labels = next(iter(dataloader))
 
     # Define the grid and colors
     color_major = (1, 0, 0)
@@ -320,5 +385,7 @@ def download_data(path: str) -> None:
     os.remove(target_path)
 
 
-# train_loader, val_loader, _ = load_ekg_data("./data/")
-# plot_ekg(train_loader)
+if __name__ == "__main__":
+
+    train_loader, val_loader, _ = load_ekg_data("./data/")
+    plot_ekg(train_loader)

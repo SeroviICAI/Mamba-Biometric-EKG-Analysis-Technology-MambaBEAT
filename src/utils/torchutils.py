@@ -33,3 +33,39 @@ def set_seed(seed: int) -> None:
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
     return None
+
+
+def save_model(model: torch.nn.Module, path: str) -> None:
+    """
+    This function saves a model in the 'models' folder as a torch.jit.
+    It should create the 'models' if it doesn't already exist.
+
+    Args:
+        model: pytorch model.
+        path: path of the model
+    """
+
+    # create folder if it does not exist
+    if not os.path.isdir("models"):
+        os.makedirs("models")
+
+    torch.save(model.to("cpu"), path)
+
+    return None
+
+
+def load_model(path: str) -> torch.nn.Module:
+    """
+    This function is to load a model from the 'models' folder.
+
+    Args:
+        path: path of the model to load.
+
+    Returns:
+        model in torchscript.
+    """
+
+    # define model
+    model: torch.nn.Module = torch.load(path)
+
+    return model
