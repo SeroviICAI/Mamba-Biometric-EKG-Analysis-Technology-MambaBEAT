@@ -27,7 +27,6 @@ class MambaBlock(torch.nn.Module):
         self.in_proj = torch.nn.Linear(
             self.in_channels, self.expanded_dim * 2, bias=bias
         )
-        self.latent_state_dim = self.expanded_dim
 
         self.conv1d = torch.nn.Conv1d(
             in_channels=self.expanded_dim,
@@ -48,12 +47,9 @@ class MambaBlock(torch.nn.Module):
         )  # Broadcast
 
 
-        # HiPPO-LegS initialization
-        P = torch.sqrt(1 + 2 * torch.arange(self.expanded_dim))
-        A = P.unsqueeze(1) * P.unsqueeze(0)
-        A = torch.tril(A) - torch.diag(torch.arange(self.expanded_dim))
-        self.A = torch.nn.Parameter(-A)
-
+        # S4D Initialization
+        A = torch.arange(1, self.latent_state_dim + 1, dtype=torch.double).repeat(self.expanded_dim, 1)
+        self.A_log = torch.nn.Parameter(torch.log(A))
         self.D = torch.nn.Parameter(torch.ones(self.expanded_dim))
 
         self.out_proj = torch.nn.Linear(self.expanded_dim, self.in_channels, bias=bias)
@@ -88,6 +84,8 @@ class MambaBlock(torch.nn.Module):
         return out
 
     def selective_ssm(self, x):
+        A = -torch.exp(self.A_log)
+
         # Get B, C and dt from self.selection
         B_C_dt = self.selection(x)
 
@@ -98,7 +96,7 @@ class MambaBlock(torch.nn.Module):
 
         # Broadcast dt with self.dt_proj
         dt = torch.nn.functional.softplus(self.dt_proj(dt))
-        Ad, Bd = self.discretize(dt, self.A, B, self.method)
+        Ad, Bd = self.discretize(dt, A, B, self.method)
         hidden = selective_scan(Ad, Bd * x.unsqueeze(-1))
 
         out = hidden @ C.unsqueeze(-1)
@@ -110,12 +108,14 @@ class MambaBlock(torch.nn.Module):
         E = torch.eye(A.size(0), dtype=A.dtype, device=A.device)
         if method == "zoh":
             # Zero-Order Hold (ZOH) method
-            Ad = torch.matrix_exp(dt.unsqueeze(-1) * A)
-            Bd = torch.inverse(dt.unsqueeze(-1) * A) @ (Ad - E) @ (dt.unsqueeze(-1) * B.unsqueeze(2))
+            Ad = torch.exp(dt.unsqueeze(-1) * A)
+            Bd = dt.unsqueeze(-1) * B.unsqueeze(2)
         elif method == "bilinear":
-            half_dt_A = 0.5 * dt * A
-            Ad = torch.inverse(E - half_dt_A) @ (E + half_dt_A)
-            Bd = torch.inverse(E - half_dt_A) @ dt * B
+            raise NotImplementedError
+            # TODO: complete the method
+            # half_dt_A = 0.5 * dt.unsqueeze(-1) * A
+            # Ad = torch.inverse(E - half_dt_A) @ (E + half_dt_A)
+            # Bd = torch.inverse(E - half_dt_A) @ dt * B
         else:
             raise ValueError("Invalid method. Choose either 'zoh' or 'bilinear'.")
 
@@ -135,6 +135,7 @@ class MambaBEAT(torch.nn.Module):
         conv_bias: bool = True,
         bias: bool = True,
         method: str = "zoh",
+        dropout: float = 0,
     ):
         super().__init__()
 
@@ -158,7 +159,7 @@ class MambaBEAT(torch.nn.Module):
         )
 
         self.norm = RMSNorm(in_channels)
-
+        self.dropout = torch.nn.Dropout(dropout)
         self.linear = torch.nn.Linear(in_channels, out_channels)
         self.softmax = torch.nn.Softmax(dim=1)
 
@@ -166,6 +167,7 @@ class MambaBEAT(torch.nn.Module):
         # Get last batch of labels
         x = self.layers(x)[:, -1]
         x = self.norm(x)
+        x = self.dropout(x)
         x = self.linear(x)
         return self.softmax(x)
 
