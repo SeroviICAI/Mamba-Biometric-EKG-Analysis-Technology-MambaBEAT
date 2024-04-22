@@ -7,68 +7,7 @@ from torch.utils.tensorboard import SummaryWriter
 # other libraries
 from typing import Optional
 
-
-class Accuracy:
-    """
-    This class is the accuracy object.
-
-    Attributes:
-        correct: number of correct predictions.
-        total: number of total examples to classify.
-    """
-
-    correct: int
-    total: int
-
-    def __init__(self) -> None:
-        """
-        This is the constructor of Accuracy class. It should
-        initialize correct and total to zero.
-        """
-
-        self.correct = 0
-        self.total = 0
-
-    def update(self, logits: torch.Tensor, labels: torch.Tensor) -> None:
-        """
-        This method update the value of correct and total counts.
-
-        Args:
-            logits: outputs of the model.
-                Dimensions: [batch, number of classes]
-            labels: labels of the examples. Dimensions: [batch].
-        """
-
-        # compute predictions
-        predictions = logits.argmax(1).type_as(labels)
-
-        # update counts
-        self.correct += int(predictions.eq(labels).sum().item())
-        self.total += labels.shape[0]
-
-        return None
-
-    def compute(self) -> float:
-        """
-        This method returns the accuracy value.
-
-        Returns:
-            accuracy value.
-        """
-
-        return self.correct / self.total
-
-    def reset(self) -> None:
-        """
-        This method resets to zero the count of correct and total number of
-        examples.
-        """
-
-        # init to zero the counts
-        self.correct = 0
-        self.total = 0
-
-        return None
+from src.utils.metrics import Accuracy
 
 
 @torch.enable_grad()
@@ -105,7 +44,7 @@ def train_step(
         outputs = model(inputs)
 
         # Compute loss
-        loss_value = loss(outputs, targets)
+        loss_value = loss(outputs, targets.double())
         losses.append(loss_value.item())
 
         optimizer.zero_grad()
@@ -156,7 +95,7 @@ def val_step(
             outputs = model(inputs)
 
             # Compute loss
-            loss_value = loss(outputs, targets)
+            loss_value = loss(outputs, targets.double())
             losses.append(loss_value.item())
 
             # Update accuracy
