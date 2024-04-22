@@ -1,7 +1,7 @@
 import torch
 from src.binary_classification.data import load_ekg_data
 from src.utils.torchutils import set_seed, load_model
-from src.utils.metrics import Accuracy
+from src.utils.metrics import Accuracy, BinaryAccuracy
 
 # static variables
 DATA_PATH: str = "./data/"
@@ -12,7 +12,7 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 set_seed(42)
 
 
-def main(name) -> None:
+def main(name, accuracy: Accuracy = Accuracy()) -> None:
     """
     This function is the main program.
     """
@@ -22,9 +22,6 @@ def main(name) -> None:
 
     # Load mode
     model = load_model(name).to(device).double()
-
-    # evaluate
-    accuracy = Accuracy()
 
     with torch.no_grad():
         for inputs, _, targets in test_data:
@@ -41,5 +38,7 @@ def main(name) -> None:
 
 
 if __name__ == "__main__":
-    name = "your_model.name"
-    main(f"./models/{name}.pth")
+    path = "path_to_model"
+    # change to BinaryAccuracy() if model has a binary approach
+    accuracy = Accuracy()
+    main(path, accuracy)
