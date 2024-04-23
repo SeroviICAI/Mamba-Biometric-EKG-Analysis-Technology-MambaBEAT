@@ -195,7 +195,8 @@ def load_ekg_data(
         batch_size (int, optional): The batch size for the dataloaders. Defaults to 128.
         shuffle (bool, optional): Whether to shuffle the data. Defaults to True.
         drop_last (bool, optional): Whether to drop the last incomplete batch. Defaults to False.
-        num_workers (int, optional): The number of worker processes for data loading. Defaults to 0.
+        num_workers (int, optional): The number of worker processes for data loading.
+        Defaults to 0.
 
     Returns:
         Tuple[DataLoader, DataLoader, DataLoader]: Dataloaders for the train, validation,

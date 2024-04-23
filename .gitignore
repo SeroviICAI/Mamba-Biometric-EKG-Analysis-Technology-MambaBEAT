@@ -161,5 +161,8 @@ cython_debug/
 data
 runs
 models
-*.pth
 nohup.out
+
+# Big sized models:
+binary_resnet101.pth
+model_resnet152.pth

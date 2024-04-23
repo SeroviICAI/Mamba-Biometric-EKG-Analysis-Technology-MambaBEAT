@@ -49,7 +49,7 @@ class SelectiveScan(torch.autograd.Function):
         X = torch.cat(
             (
                 X[:, :, 1:original_L],
-                last_elementA * X[:, :, original_L - 1 : original_L] + last_elementX,
+                last_elementA * X[:, :, original_L - 1:original_L] + last_elementX,
             ),
             dim=2,
         )
@@ -101,8 +101,8 @@ class SelectiveScan(torch.autograd.Function):
         Xa = grad_output
 
         for d in range(iterations - 1, -1, -1):
-            Aa = A[:, :, 0 : L : 2**d]
-            Xa = grad_output[:, :, 0 : L : 2**d]
+            Aa = A[:, :, 0:L:2**d]
+            Xa = grad_output[:, :, 0:L:2**d]
 
             T = Xa.size(2)
             Aa = Aa.view(B, D, T // 2, 2, -1)
