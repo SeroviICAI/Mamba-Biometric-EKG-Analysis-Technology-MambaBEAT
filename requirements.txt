@@ -1,0 +1,10 @@
+numpy>=1.24.1
+matplotlib==3.8.2
+pandas==2.2.2
+Requests==2.31.0
+scikit_learn==1.4.0
+tqdm==4.66.1
+wfdb==4.1.2
+tensorboard==2.16.2
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch

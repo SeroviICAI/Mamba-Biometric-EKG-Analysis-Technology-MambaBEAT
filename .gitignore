@@ -158,3 +158,11 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+data
+runs
+models
+nohup.out
+
+# Big sized models:
+binary_resnet101.pth
+model_resnet152.pth
