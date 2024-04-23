@@ -65,7 +65,7 @@ def main() -> None:
     train_data, val_data, _ = load_ekg_data(DATA_PATH, batch_size=batch_size)
 
     # define name and writer
-    name: str = f"binary_MambaBEAT"  # personalizable name
+    name: str = "binary_MambaBEAT"  # personalizable name
     writer: SummaryWriter = SummaryWriter(f"runs/{name}")
     inputs: torch.Tensor = next(iter(train_data))[0]
 

@@ -17,7 +17,7 @@ import wfdb
 import zipfile
 from typing import List, Dict
 
-pd.set_option('future.no_silent_downcasting', True)
+pd.set_option("future.no_silent_downcasting", True)
 
 
 class EKGDataset(Dataset):
@@ -44,7 +44,9 @@ class EKGDataset(Dataset):
         101 (23), pp. e215-e220.
     """
 
-    def __init__(self, X: List[str], features: List[int], y: List[List[str]], path: str) -> None:
+    def __init__(
+        self, X: List[str], features: List[int], y: List[List[str]], path: str
+    ) -> None:
         """
         Constructor of EKGDataset.
 
@@ -71,7 +73,7 @@ class EKGDataset(Dataset):
         self._encoder = MultiLabelBinarizer()
 
         # Fit the LabelEncoder to the labels and transform the labels to integers
-        self.y = torch.tensor(self._encoder.fit_transform(y), dtype=torch.long)
+        self.y = torch.tensor(self._encoder.fit_transform(y), dtype=torch.double)
 
     def __len__(self) -> int:
         """
@@ -83,7 +85,9 @@ class EKGDataset(Dataset):
 
         return len(self.X)
 
-    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(
+        self, index: int
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         This method loads an item based on the index.
 
@@ -91,12 +95,17 @@ class EKGDataset(Dataset):
             index (int): The index of the element in the dataset.
 
         Returns:
-            tuple[torch.Tensor, torch.Tensor]: A tuple containing the EKG recording and its corresponding labels.
-            The EKG recording is a 1D tensor where each element is a lead of the EKG, and the labels are a 1D
-            tensor of binary values indicating the presence of each diagnostic superclass for the EKG recording.
+            tuple[torch.Tensor, torch.Tensor, torch.Tensor]: A tuple containing the EKG
+            recording and its corresponding labels. The EKG recording is a 1D tensor where
+            each element is a lead of the EKG, and the labels are a 1D tensor of binary values
+            indicating the presence of each diagnostic superclass for the EKG recording.
         """
 
-        return self.load_raw_data(index), self.features[index], self.y[index]
+        return (
+            torch.tensor(self.load_raw_data(index), dtype=torch.double),
+            self.features[index],
+            self.y[index],
+        )
 
     def load_raw_data(self, index: int):
         """
@@ -110,17 +119,17 @@ class EKGDataset(Dataset):
         """
         ekg_data = wfdb.rdsamp(self._path + self.X[index])[0]
         return np.array(ekg_data)
-    
+
     def get_label(self, encoded: torch.Tensor) -> List[str]:
-        '''
+        """
         Recovers the label from the encoded vector.
 
         Args:
             encoded (torch.Tensor): the encoded label
-        
+
         Returns:
             torch.Tensor: original label
-        '''
+        """
         # needed unsqueeze because the method requires a 2D tensor
         return self._encoder.inverse_transform(encoded.unsqueeze(0))
 
@@ -149,36 +158,35 @@ def aggregate_diagnostic(y_dic: Dict, agg_df: pd.DataFrame) -> List[str]:
 def extract_features(df):
     X = pd.DataFrame(index=df.index)
 
-    X['age'] = df.age
-    X['age'] = X.age.fillna(0)
+    X["age"] = df.age
+    X["age"] = X.age.fillna(0)
 
-    X['sex'] = df.sex.astype(float)
-    X['sex'] = X.sex.fillna(0)
+    X["sex"] = df.sex.astype(float)
+    X["sex"] = X.sex.fillna(0)
 
-    X['height'] = df.height
-    X.loc[X.height < 50, 'height'] = np.nan
-    X['height'] = X.height.fillna(0)
+    X["height"] = df.height
+    X.loc[X.height < 50, "height"] = np.nan
+    X["height"] = X.height.fillna(0)
 
-    X['weight'] = df.weight
-    X['weight'] = X.weight.fillna(0)
+    X["weight"] = df.weight
+    X["weight"] = X.weight.fillna(0)
 
-    X['infarction_stadium1'] = df.infarction_stadium1.replace({
-        'unknown': 0,
-        'Stadium I': 1,
-        'Stadium I-II': 2,
-        'Stadium II': 3,
-        'Stadium II-III': 4,
-        'Stadium III': 5
-    }).fillna(0)
+    X["infarction_stadium1"] = df.infarction_stadium1.replace(
+        {
+            "unknown": 0,
+            "Stadium I": 1,
+            "Stadium I-II": 2,
+            "Stadium II": 3,
+            "Stadium II-III": 4,
+            "Stadium III": 5,
+        }
+    ).fillna(0)
 
-    X['infarction_stadium2'] = df.infarction_stadium2.replace({
-        'unknown': 0,
-        'Stadium I': 1,
-        'Stadium II': 2,
-        'Stadium III': 3
-    }).fillna(0)
+    X["infarction_stadium2"] = df.infarction_stadium2.replace(
+        {"unknown": 0, "Stadium I": 1, "Stadium II": 2, "Stadium III": 3}
+    ).fillna(0)
 
-    X['pacemaker'] = (df.pacemaker == 'ja, pacemaker').astype(float)
+    X["pacemaker"] = (df.pacemaker == "ja, pacemaker").astype(float)
 
     return X
 
@@ -192,7 +200,8 @@ def load_ekg_data(
     num_workers: int = 0,
 ):
     """
-    Load EKG data, split it into train, validation, and test sets, and return dataloaders for each set.
+    Load EKG data, split it into train, validation, and test sets, and return dataloaders
+    for each set.
 
     Args:
         path (str): The path where the data is stored.
@@ -203,7 +212,8 @@ def load_ekg_data(
         num_workers (int, optional): The number of worker processes for data loading. Defaults to 0.
 
     Returns:
-        Tuple[DataLoader, DataLoader, DataLoader]: Dataloaders for the train, validation, and test sets.
+        Tuple[DataLoader, DataLoader, DataLoader]: Dataloaders for the train, validation,
+        and test sets.
     """
 
     if not os.path.isdir(f"{path}"):
@@ -239,10 +249,6 @@ def load_ekg_data(
     X_train = X[train_mask]
     features_train = features[train_mask]
     y_train = [y_flatten[i] for i in np.where(train_mask)[0]]
-    # combined_dataset = EKGDataset(X_train_val, y_train_val, path)
-
-    # Use random_split to split the data
-    # train_dataset, val_dataset = random_split(combined_dataset, [0.8, 0.2])
 
     # Validation
     val_mask = (Y.strat_fold == val_fold).values
@@ -348,8 +354,9 @@ def plot_ekg(
         fig.text(0.04, 0.5, "Amplitude", va="center", rotation="vertical")
 
         # Set title for the entire figure
-        print(labels[i], dataloader.dataset.get_label(labels[i]))
-        axes[0].set_title(f"EKG Signal {i+1}, Label: {dataloader.dataset.get_label(labels[i])}")
+        axes[0].set_title(
+            f"EKG Signal {i+1}, Label: {dataloader.dataset.get_label(labels[i])}"
+        )
 
         # Set x label
         plt.xlabel("Time (seconds)")
@@ -390,6 +397,5 @@ def download_data(path: str) -> None:
 
 
 if __name__ == "__main__":
-
     train_loader, val_loader, _ = load_ekg_data("./data/")
     plot_ekg(train_loader)

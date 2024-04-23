@@ -44,7 +44,7 @@ def train_step(
         outputs = model(inputs)
 
         # Compute loss
-        loss_value = loss(outputs, targets.double())
+        loss_value = loss(outputs, targets)
         losses.append(loss_value.item())
 
         optimizer.zero_grad()
@@ -95,7 +95,7 @@ def val_step(
             outputs = model(inputs)
 
             # Compute loss
-            loss_value = loss(outputs, targets.double())
+            loss_value = loss(outputs, targets)
             losses.append(loss_value.item())
 
             # Update accuracy

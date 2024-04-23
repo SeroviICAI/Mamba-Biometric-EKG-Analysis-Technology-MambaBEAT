@@ -14,9 +14,7 @@ from src.utils.metrics import Accuracy
 from src.utils.data import (
     load_ekg_data,
 )
-from src.utils.torchutils import (
-    set_seed, save_model
-)
+from src.utils.torchutils import set_seed, save_model
 
 from src.modules.mamba import MambaBEAT
 
@@ -39,17 +37,16 @@ def main() -> None:
     This function is the main program for the training.
     """
     # hyperparameters
-    epochs: int = 10
+    epochs: int = 60
     lr: float = 1e-2
-    batch_size: int = 32
-    accuracy: Accuracy = Accuracy()
+    batch_size: int = 256
 
     # Mamba Hyperparameters
     n_layers: int = 1
-    latent_state_dim: int = 16
+    latent_state_dim: int = 12
     expand: int = 2
     dt_rank: int = None
-    kernel_size: int = 4
+    kernel_size: int = 12
     conv_bias: bool = True
     bias: bool = False
     method: str = "zoh"
@@ -62,23 +59,27 @@ def main() -> None:
     train_data, val_data, _ = load_ekg_data(DATA_PATH, batch_size=batch_size)
 
     # define name and writer
-    name: str = f"model_MambaBEAT_lr_{lr}_bs_{batch_size}_layers_{n_layers}"
+    name: str = "model_MambaBEAT"
     writer: SummaryWriter = SummaryWriter(f"runs/{name}")
     inputs: torch.Tensor = next(iter(train_data))[0]
 
     # define model
-    model: torch.nn.Module = MambaBEAT(
-        inputs.size(2),
-        N_CLASSES,
-        n_layers,
-        latent_state_dim,
-        expand,
-        dt_rank,
-        kernel_size,
-        conv_bias,
-        bias,
-        method,
-    ).to(device).double()
+    model: torch.nn.Module = (
+        MambaBEAT(
+            inputs.size(2),
+            N_CLASSES,
+            n_layers,
+            latent_state_dim,
+            expand,
+            dt_rank,
+            kernel_size,
+            conv_bias,
+            bias,
+            method,
+        )
+        .to(device)
+        .double()
+    )
 
     # define loss and optimizer
     loss: torch.nn.Module = torch.nn.CrossEntropyLoss()
@@ -89,7 +90,7 @@ def main() -> None:
     accuracy: Accuracy = Accuracy()
 
     # define an empty scheduler
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=45, gamma=0.5)
     # Train the model
     try:
         for epoch in tqdm(range(epochs)):  # loop over the dataset multiple times

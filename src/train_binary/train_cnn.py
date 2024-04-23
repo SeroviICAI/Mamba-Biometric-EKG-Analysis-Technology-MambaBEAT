@@ -12,13 +12,12 @@ from src.utils.train_functions import train_step, val_step
 
 from src.binary_classification.data import (
     load_ekg_data,
-    plot_ekg,
 )
 
 from src.utils.metrics import BinaryAccuracy
 
 from src.utils.torchutils import set_seed, save_model
-from src.modules.cnn import CNN
+from src.modules.cnn1 import YModel
 
 # set device
 device: torch.device = (
@@ -46,7 +45,6 @@ def main() -> None:
     gamma: float = 0.5
 
     hidden_sizes = (256, 128, 64)
-    kernel_size: int = 3
     # empty nohup file
     open("nohup.out", "w").close()
 
@@ -56,16 +54,15 @@ def main() -> None:
     train_data, val_data, _ = load_ekg_data(DATA_PATH, batch_size=batch_size)
 
     # define name and writer
-    name: str = f"binary_cnn"
+    name: str = "binary_cnn"
     writer: SummaryWriter = SummaryWriter(f"runs/{name}")
     inputs: torch.Tensor = next(iter(train_data))[0]
 
     # define model
     model: torch.nn.Module = (
-        CNN(
+        YModel(
             input_channels=inputs.shape[1],
             hidden_sizes=hidden_sizes,
-            kernel_size=kernel_size,
             output_channels=N_CLASSES,
         )
         .to(device)

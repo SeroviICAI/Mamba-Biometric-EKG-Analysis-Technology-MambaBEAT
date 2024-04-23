@@ -9,10 +9,10 @@ from tqdm.auto import tqdm
 
 # own modules
 from src.utils.train_functions import train_step, val_step
-from src.utils.metrics import Accuracy
+from src.utils.metrics import BinaryAccuracy
 
 
-from src.utils.data import (
+from src.binary_classification.data import (
     load_ekg_data,
 )
 from src.utils.torchutils import set_seed, save_model
@@ -39,14 +39,14 @@ def main() -> None:
     """
     # hyperparameters
     epochs: int = 40
-    lr: float = 1e-3
-    batch_size: int = 64
+    lr: float = 5e-3
+    batch_size: int = 128
 
-    # Model hiperparameters
-    n_layers: int = 2
-    hidden_size: int = 32
+    # Mamba Hyperparameters
+    n_layers: int = 1
+    hidden_size: int = 64
     bidirectional: bool = True
-    gamma: float = 0.9
+    gamma: float = 0.8
     step_size: int = 10
     # empty nohup file
     open("nohup.out", "w").close()
@@ -59,7 +59,7 @@ def main() -> None:
     )
 
     # define name and writer
-    name: str = f"model_{'Bi'*bidirectional}LSTM"
+    name: str = f"binary_{'Bi'*bidirectional}LSTM"
     writer: SummaryWriter = SummaryWriter(f"runs/{name}")
     inputs: torch.Tensor = next(iter(train_data))[0]
 
@@ -67,15 +67,16 @@ def main() -> None:
     model: torch.nn.Module = (
         LSTM(inputs.size(2), hidden_size, n_layers, N_CLASSES, bidirectional)
         .to(device)
-        .double()
+        .to(torch.double)
     )
 
     # define loss and optimizer
-    loss: torch.nn.Module = torch.nn.CrossEntropyLoss()
+    loss: torch.nn.Module = torch.nn.BCELoss()
     optimizer: torch.optim.Optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
 
     # compute the accuracy
-    accuracy: Accuracy = Accuracy()
+
+    accuracy: BinaryAccuracy = BinaryAccuracy()
 
     # define an empty scheduler
     scheduler = torch.optim.lr_scheduler.StepLR(
@@ -94,11 +95,11 @@ def main() -> None:
 
             # clear the GPU cache
             torch.cuda.empty_cache()
-
     except KeyboardInterrupt:
         pass
-
+    # save model
     save_model(model, f"./models/{name}.pth")
+
     return None
 
 

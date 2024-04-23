@@ -11,13 +11,12 @@ from tqdm.auto import tqdm
 from src.utils.train_functions import train_step, val_step
 from src.utils.metrics import Accuracy
 
-
 from src.utils.data import (
     load_ekg_data,
 )
 from src.utils.torchutils import set_seed, save_model
 
-from src.modules.lstm import LSTM
+from src.modules.resnet import ResNet152
 
 # set device
 device: torch.device = (
@@ -38,16 +37,11 @@ def main() -> None:
     This function is the main program for the training.
     """
     # hyperparameters
-    epochs: int = 40
+    epochs: int = 20
     lr: float = 1e-3
-    batch_size: int = 64
-
-    # Model hiperparameters
-    n_layers: int = 2
-    hidden_size: int = 32
-    bidirectional: bool = True
-    gamma: float = 0.9
-    step_size: int = 10
+    batch_size: int = 128
+    gamma: float = 0.5
+    step_size: int = 5
     # empty nohup file
     open("nohup.out", "w").close()
 
@@ -59,28 +53,23 @@ def main() -> None:
     )
 
     # define name and writer
-    name: str = f"model_{'Bi'*bidirectional}LSTM"
+    name: str = "model_resnet152"
     writer: SummaryWriter = SummaryWriter(f"runs/{name}")
-    inputs: torch.Tensor = next(iter(train_data))[0]
+    # inputs: torch.Tensor = next(iter(train_data))[0]
 
     # define model
-    model: torch.nn.Module = (
-        LSTM(inputs.size(2), hidden_size, n_layers, N_CLASSES, bidirectional)
-        .to(device)
-        .double()
-    )
+    model: torch.nn.Module = ResNet152(N_CLASSES).to(device).double()
 
     # define loss and optimizer
     loss: torch.nn.Module = torch.nn.CrossEntropyLoss()
     optimizer: torch.optim.Optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
 
     # compute the accuracy
+
     accuracy: Accuracy = Accuracy()
 
     # define an empty scheduler
-    scheduler = torch.optim.lr_scheduler.StepLR(
-        optimizer, step_size=step_size, gamma=gamma
-    )
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
     # Train the model
     try:
         for epoch in tqdm(range(epochs)):  # loop over the dataset multiple times

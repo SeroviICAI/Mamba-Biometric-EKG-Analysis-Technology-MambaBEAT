@@ -1,7 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-
 import torch.nn.init as init
 
 
@@ -12,11 +10,17 @@ class Block(nn.Module):
         self.net = nn.Sequential(
             nn.Conv1d(input_channels, output_channels, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.Conv1d(output_channels, output_channels, kernel_size=3, stride=stride, padding=1),
+            nn.Conv1d(
+                output_channels,
+                output_channels,
+                kernel_size=3,
+                stride=stride,
+                padding=1,
+            ),
             nn.ReLU(),
             nn.Conv1d(output_channels, output_channels, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.BatchNorm1d(output_channels)  # Adding batch normalization
+            nn.BatchNorm1d(output_channels),  # Adding batch normalization
         )
 
         # Initialize weights using He initialization
@@ -31,16 +35,24 @@ class Block(nn.Module):
 
 
 class YModel(nn.Module):
-    def __init__(self, hidden_sizes: tuple[int, ...], input_channels: int = 1000, output_channels: int = 5) -> None:
+    def __init__(
+        self,
+        hidden_sizes: tuple[int, ...],
+        input_channels: int = 1000,
+        output_channels: int = 5,
+    ) -> None:
         super(YModel, self).__init__()
 
         self.features = nn.Sequential(
-            nn.Conv1d(input_channels, hidden_sizes[0], kernel_size=7, padding=3, stride=2),
+            nn.Conv1d(
+                input_channels, hidden_sizes[0], kernel_size=7, padding=3, stride=2
+            ),
             nn.ReLU(),
             nn.MaxPool1d(kernel_size=3, stride=2, padding=1),
             nn.BatchNorm1d(hidden_sizes[0]),
             *[
-                Block(hidden_sizes[i-1], hidden_sizes[i], stride=1) for i in range(1, len(hidden_sizes))
+                Block(hidden_sizes[i - 1], hidden_sizes[i], stride=1)
+                for i in range(1, len(hidden_sizes))
             ]
         )
 

@@ -14,7 +14,6 @@ from src.utils.metrics import BinaryAccuracy
 
 from src.binary_classification.data import (
     load_ekg_data,
-    plot_ekg,
 )
 from src.utils.torchutils import set_seed, save_model
 
@@ -39,9 +38,9 @@ def main() -> None:
     This function is the main program for the training.
     """
     # hyperparameters
-    epochs: int = 50
-    lr: float = 1e-2  # 1e-2
-    batch_size: int = 64
+    epochs: int = 20
+    lr: float = 5e-5
+    batch_size: int = 128
 
     # empty nohup file
     open("nohup.out", "w").close()
@@ -54,9 +53,8 @@ def main() -> None:
     )
 
     # define name and writer
-    name: str = f"model_resnet101_lr_{epochs}_{lr}_bs_{batch_size}_W"
+    name: str = "binary_resnet101"
     writer: SummaryWriter = SummaryWriter(f"runs/{name}")
-    # inputs: torch.Tensor = next(iter(train_data))[0]
 
     # define model
     model: torch.nn.Module = ResNet101(N_CLASSES).to(device).double()

@@ -46,9 +46,10 @@ class MambaBlock(torch.nn.Module):
             self.dt_rank, self.expanded_dim, bias=True
         )  # Broadcast
 
-
         # S4D Initialization
-        A = torch.arange(1, self.latent_state_dim + 1, dtype=torch.double).repeat(self.expanded_dim, 1)
+        A = torch.arange(1, self.latent_state_dim + 1, dtype=torch.double).repeat(
+            self.expanded_dim, 1
+        )
         self.A_log = torch.nn.Parameter(torch.log(A))
         self.D = torch.nn.Parameter(torch.ones(self.expanded_dim))
 
@@ -105,7 +106,6 @@ class MambaBlock(torch.nn.Module):
 
     @staticmethod
     def discretize(dt, A, B, method):
-        E = torch.eye(A.size(0), dtype=A.dtype, device=A.device)
         if method == "zoh":
             # Zero-Order Hold (ZOH) method
             Ad = torch.exp(dt.unsqueeze(-1) * A)
@@ -113,6 +113,7 @@ class MambaBlock(torch.nn.Module):
         elif method == "bilinear":
             raise NotImplementedError
             # TODO: complete the method
+            # E = torch.eye(A.size(0), dtype=A.dtype, device=A.device)
             # half_dt_A = 0.5 * dt.unsqueeze(-1) * A
             # Ad = torch.inverse(E - half_dt_A) @ (E + half_dt_A)
             # Bd = torch.inverse(E - half_dt_A) @ dt * B
@@ -181,7 +182,11 @@ class RMSNorm(torch.nn.Module):
         self.bias = torch.nn.Parameter(torch.zeros(size)) if bias else None
 
     def forward(self, x):
-        normed_x = x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.epsilon) * self.weight
+        normed_x = (
+            x
+            * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.epsilon)
+            * self.weight
+        )
 
         if self.bias is not None:
             return normed_x + self.bias

@@ -38,7 +38,7 @@ def main(name, accuracy: Accuracy = Accuracy()) -> None:
 
 
 if __name__ == "__main__":
-    path = "path_to_model"
-    # change to BinaryAccuracy() if model has a binary approach
+    path = "./report_models/model_name.pth"
+    # change to BinaryAccuracy() if model has a binary approach (starts with binary)
     accuracy = Accuracy()
     main(path, accuracy)
